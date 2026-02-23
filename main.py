@@ -59,6 +59,9 @@ def query(
     model: Optional[str] = typer.Option(
         None, "--model", "-m", help="Override the LLM model (e.g. mistral, llama3.2)"
     ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Save answer to file (.txt, .json, .md)"
+    ),
 ):
     """Ask a question about indexed documents."""
     from rag import config
@@ -68,7 +71,9 @@ def query(
         config.LLM_MODEL = model
 
     if question:
-        do_query(question, collection, show_sources=sources)
+        answer = do_query(question, collection, show_sources=sources)
+        if output and answer:
+            _save_output(output, question, answer)
         return
 
     # ── interactive REPL ──────────────────────────────────────────────────────
@@ -176,6 +181,101 @@ def clear(
         console.print("[green]All collections deleted.[/green]")
     else:
         console.print("[dim]Aborted.[/dim]")
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _save_output(path: Path, question: str, answer: str) -> None:
+    """Write a single Q/A pair to disk in the format implied by the file extension."""
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        import json
+        from rag import config
+        data = {
+            "question": question,
+            "answer": answer,
+            "collection": config.COLLECTION,
+            "model": config.LLM_MODEL,
+        }
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    elif suffix == ".md":
+        path.write_text(f"## Q\n\n{question}\n\n## A\n\n{answer}\n", encoding="utf-8")
+    else:
+        path.write_text(f"Q: {question}\n\nA: {answer}\n", encoding="utf-8")
+    console.print(f"\n[dim]Saved → {path}[/dim]")
+
+
+# ── compare ───────────────────────────────────────────────────────────────────
+
+@app.command()
+def compare(
+    question_or_file: str = typer.Argument(
+        ...,
+        help="Question to ask, or path to a .txt file with one question per line",
+    ),
+    models: str = typer.Option(
+        ..., "--models", "-m",
+        help="Comma-separated model names, e.g. 'llama3.2,mistral,phi3'",
+    ),
+    collection: Optional[str] = typer.Option(
+        None, "--collection", "-c", help="Collection to query (default: 'default')"
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Save results to file (.csv or .json)"
+    ),
+):
+    """Run the same question(s) against multiple models and compare outputs."""
+    import csv
+    import json
+    from rag import config
+    from rag.chain import run_silent
+
+    model_list = [m.strip() for m in models.split(",") if m.strip()]
+    if not model_list:
+        console.print("[red]No models specified.[/red]")
+        raise typer.Exit(1)
+
+    # Accept a question string or a file of questions (one per line)
+    source = Path(question_or_file)
+    if source.exists() and source.is_file():
+        questions = [q.strip() for q in source.read_text(encoding="utf-8").splitlines() if q.strip()]
+    else:
+        questions = [question_or_file]
+
+    collection = collection or config.COLLECTION
+    results: list[dict] = []
+
+    for question in questions:
+        console.print(f"\n[bold blue]Q:[/bold blue] {question}")
+        for model in model_list:
+            with console.status(f"[dim]{model}…[/dim]"):
+                try:
+                    answer, elapsed = run_silent(question, collection, model=model)
+                except Exception as e:
+                    answer, elapsed = f"ERROR: {e}", 0.0
+            preview = answer[:200] + ("…" if len(answer) > 200 else "")
+            console.print(f"  [cyan]{model}[/cyan] [dim]({elapsed:.1f}s)[/dim]  {preview}")
+            results.append({
+                "question": question,
+                "model": model,
+                "answer": answer,
+                "latency_s": round(elapsed, 2),
+            })
+
+    if not output:
+        return
+
+    suffix = output.suffix.lower()
+    if suffix == ".json":
+        output.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    else:
+        # Default: CSV
+        with output.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["question", "model", "answer", "latency_s"])
+            writer.writeheader()
+            writer.writerows(results)
+
+    console.print(f"\n[bold green]✓ Results saved to {output}[/bold green]")
 
 
 # ── entrypoint ────────────────────────────────────────────────────────────────

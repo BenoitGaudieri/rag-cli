@@ -1,3 +1,5 @@
+import time
+
 from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
@@ -95,3 +97,24 @@ def query(question: str, collection: str | None = None, show_sources: bool = Fal
             console.print(f"     [dim italic]\"{preview}…\"[/dim italic]")
 
     return full_response
+
+
+def run_silent(
+    question: str, collection: str | None = None, model: str | None = None
+) -> tuple[str, float]:
+    """
+    Run a query without any printed output.
+    Returns (answer, elapsed_seconds). Used by the `compare` command.
+    """
+    collection = collection or config.COLLECTION
+    original_model = config.LLM_MODEL
+    if model:
+        config.LLM_MODEL = model
+    try:
+        chain, _ = _build_chain(collection)
+        start = time.perf_counter()
+        result = chain.invoke(question)
+        elapsed = time.perf_counter() - start
+        return result, elapsed
+    finally:
+        config.LLM_MODEL = original_model

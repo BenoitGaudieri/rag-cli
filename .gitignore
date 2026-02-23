@@ -1,0 +1,7 @@
+venv
+nchroma_db
+__pycache__
+*.pyc
+.env
+docs
+.claude

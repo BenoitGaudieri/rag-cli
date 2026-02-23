@@ -1,16 +1,17 @@
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import FAISS
 from rich.console import Console
 
 from . import config
 
 console = Console()
 
-# Supported extensions → loader class
 LOADERS = {
     ".pdf": PyPDFLoader,
     ".txt": TextLoader,
@@ -26,7 +27,6 @@ def _load_file(path: Path) -> list:
         console.print(f"  [yellow]Skipping unsupported file: {path.name}[/yellow]")
         return []
     try:
-        # TextLoader benefits from autodetect_encoding on Windows
         if loader_cls is TextLoader:
             loader = TextLoader(str(path), autodetect_encoding=True)
         else:
@@ -40,10 +40,8 @@ def _load_file(path: Path) -> list:
 
 
 def load_documents(path: Path) -> list:
-    """Load documents from a single file or recursively from a directory."""
     if path.is_file():
         return _load_file(path)
-
     docs = []
     files = sorted(p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in LOADERS)
     if not files:
@@ -55,11 +53,8 @@ def load_documents(path: Path) -> list:
 
 
 def index(path: Path, collection: str | None = None) -> int:
-    """
-    Load, chunk, embed, and store documents from *path*.
-    Returns the number of chunks indexed.
-    """
     collection = collection or config.COLLECTION
+    collection_dir = config.INDEX_DIR / collection
 
     console.print(f"\n[bold blue]Indexing[/bold blue] {path}")
 
@@ -79,21 +74,39 @@ def index(path: Path, collection: str | None = None) -> int:
     console.print(f"[green]Split into {len(chunks)} text chunks[/green]")
 
     console.print(
-        f"\n[bold]Embedding with [cyan]{config.EMBED_MODEL}[/cyan] "
-        f"(this may take a while the first time)...[/bold]"
+        f"\n[bold]Embedding with [cyan]{config.EMBED_MODEL}[/cyan]"
+        f" (this may take a while the first time)...[/bold]"
     )
 
     embeddings = OllamaEmbeddings(model=config.EMBED_MODEL)
 
-    Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory=str(config.CHROMA_DIR),
-        collection_name=collection,
-    )
+    if collection_dir.exists():
+        # Merge into existing index
+        vectorstore = FAISS.load_local(
+            str(collection_dir), embeddings, allow_dangerous_deserialization=True
+        )
+        vectorstore.add_documents(chunks)
+        console.print(f"[dim]Merged into existing collection '{collection}'[/dim]")
+    else:
+        vectorstore = FAISS.from_documents(chunks, embeddings)
+
+    collection_dir.mkdir(parents=True, exist_ok=True)
+    vectorstore.save_local(str(collection_dir))
+
+    total = vectorstore.index.ntotal
+
+    # Persist lightweight metadata for the `list` command
+    sources = sorted({str(Path(c.metadata.get("source", "?")).name) for c in chunks})
+    meta = {
+        "chunks": total,
+        "sources": sources,
+        "updated": datetime.now(timezone.utc).isoformat(),
+    }
+    (collection_dir / "meta.json").write_text(json.dumps(meta, indent=2))
 
     console.print(
-        f"\n[bold green]✓ Indexed {len(chunks)} chunks[/bold green] "
-        f"→ collection [cyan]'{collection}'[/cyan] in [dim]{config.CHROMA_DIR}[/dim]"
+        f"\n[bold green]✓ Indexed {len(chunks)} chunks[/bold green]"
+        f" → collection [cyan]'{collection}'[/cyan]"
+        f" ([dim]{collection_dir}[/dim])"
     )
     return len(chunks)

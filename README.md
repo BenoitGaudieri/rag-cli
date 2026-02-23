@@ -26,7 +26,7 @@ A: According to the documentation, the three main configuration options are...
 |---|---|
 | LLM & Embeddings | [Ollama](https://ollama.com) (`llama3.2`, `nomic-embed-text`) |
 | RAG Framework | [LangChain](https://python.langchain.com/) 1.x (LCEL) |
-| Vector Store | [ChromaDB](https://www.trychroma.com/) — persistent, local |
+| Vector Store | [FAISS](https://github.com/facebookresearch/faiss) — persistent, local, no server needed |
 | Document Parsing | `pypdf`, `docx2txt`, built-in text loaders |
 | CLI | [Typer](https://typer.tiangolo.com/) + [Rich](https://rich.readthedocs.io/) |
 
@@ -46,12 +46,12 @@ A: According to the documentation, the three main configuration options are...
 │   Document Loader               OllamaEmbeddings (nomic)        │
 │         │                                    │                  │
 │         ▼                                    ▼                  │
-│  RecursiveCharacter              ChromaDB MMR Retriever         │
+│  RecursiveCharacter               FAISS MMR Retriever           │
 │    TextSplitter                   (top-k relevant chunks)       │
 │         │                                    │                  │
 │         ▼                                    ▼                  │
-│  OllamaEmbeddings  ──────►  ChromaDB   ChatPromptTemplate       │
-│   (nomic-embed-text)        (persisted)       │                 │
+│  OllamaEmbeddings  ──────►   FAISS     ChatPromptTemplate       │
+│   (nomic-embed-text)        (on disk)        │                  │
 │                                               ▼                 │
 │                                       ChatOllama (llama3.2)     │
 │                                               │                 │
@@ -144,8 +144,8 @@ All defaults can be overridden via environment variables (or a `.env` file):
 |---|---|---|
 | `RAG_LLM_MODEL` | `llama3.2` | Ollama model for generation |
 | `RAG_EMBED_MODEL` | `nomic-embed-text` | Ollama model for embeddings |
-| `RAG_COLLECTION` | `default` | ChromaDB collection name |
-| `RAG_CHROMA_DIR` | `./chroma_db` | Persistence directory |
+| `RAG_COLLECTION` | `default` | FAISS collection name |
+| `RAG_INDEX_DIR` | `./faiss_db` | Persistence directory |
 | `RAG_CHUNK_SIZE` | `1000` | Characters per text chunk |
 | `RAG_CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
 | `RAG_TOP_K` | `5` | Number of chunks retrieved per query |
@@ -165,10 +165,10 @@ rag-cli/
 ├── main.py          # CLI entry point — index / query / list / clear
 ├── rag/
 │   ├── config.py    # all parameters, overridable via env vars
-│   ├── indexer.py   # document loading, chunking, embedding → ChromaDB
+│   ├── indexer.py   # document loading, chunking, embedding → FAISS
 │   └── chain.py     # LCEL RAG chain, MMR retriever, streaming output
 ├── requirements.txt
-└── chroma_db/       # auto-created on first index (add to .gitignore)
+└── faiss_db/        # auto-created on first index (add to .gitignore)
 ```
 
 ---

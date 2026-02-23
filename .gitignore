@@ -1,5 +1,6 @@
 venv
 nchroma_db
+faiss_db
 __pycache__
 *.pyc
 .env

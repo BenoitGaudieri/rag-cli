@@ -104,23 +104,36 @@ def query(
 @app.command(name="list")
 def list_collections():
     """List all indexed collections and their chunk counts."""
-    import chromadb
+    import json
     from rag import config
 
-    if not config.CHROMA_DIR.exists():
+    if not config.INDEX_DIR.exists():
         console.print("[yellow]No index found. Run 'index' first.[/yellow]")
         return
 
-    client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-    collections = client.list_collections()
+    collections = sorted(
+        d for d in config.INDEX_DIR.iterdir()
+        if d.is_dir() and (d / "index.faiss").exists()
+    )
 
     if not collections:
         console.print("[yellow]No collections found.[/yellow]")
         return
 
     console.print("\n[bold]Indexed collections:[/bold]")
-    for col in collections:
-        console.print(f"  [cyan]{col.name}[/cyan]  — {col.count()} chunks")
+    for col_dir in collections:
+        meta_file = col_dir / "meta.json"
+        if meta_file.exists():
+            meta = json.loads(meta_file.read_text())
+            chunks = meta.get("chunks", "?")
+            sources = ", ".join(meta.get("sources", []))
+            updated = meta.get("updated", "")[:10]
+            console.print(
+                f"  [cyan]{col_dir.name}[/cyan]  — {chunks} chunks"
+                f"  [dim]({sources}) · {updated}[/dim]"
+            )
+        else:
+            console.print(f"  [cyan]{col_dir.name}[/cyan]")
 
 
 # ── clear ─────────────────────────────────────────────────────────────────────
@@ -132,33 +145,34 @@ def clear(
     ),
 ):
     """Delete one collection or the entire index."""
-    import chromadb
+    import shutil
     from rag import config
 
-    if not config.CHROMA_DIR.exists():
+    if not config.INDEX_DIR.exists():
         console.print("[yellow]Nothing to clear.[/yellow]")
         return
 
-    client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-
     if collection:
-        try:
-            client.delete_collection(collection)
-            console.print(f"[green]Deleted collection '{collection}'[/green]")
-        except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
+        col_dir = config.INDEX_DIR / collection
+        if not col_dir.exists():
+            console.print(f"[red]Collection '{collection}' not found.[/red]")
+            raise typer.Exit(1)
+        shutil.rmtree(col_dir)
+        console.print(f"[green]Deleted collection '{collection}'[/green]")
         return
 
-    cols = client.list_collections()
+    cols = sorted(
+        d for d in config.INDEX_DIR.iterdir()
+        if d.is_dir() and (d / "index.faiss").exists()
+    )
     if not cols:
         console.print("[yellow]Nothing to clear.[/yellow]")
         return
 
-    names = [c.name for c in cols]
+    names = [d.name for d in cols]
     confirmed = typer.confirm(f"Delete ALL collections {names}?", default=False)
     if confirmed:
-        for c in cols:
-            client.delete_collection(c.name)
+        shutil.rmtree(config.INDEX_DIR)
         console.print("[green]All collections deleted.[/green]")
     else:
         console.print("[dim]Aborted.[/dim]")

@@ -1,6 +1,6 @@
 from langchain_ollama import OllamaEmbeddings, ChatOllama
-from langchain_chroma import Chroma
-from langchain.prompts import ChatPromptTemplate
+from langchain_community.vectorstores import FAISS
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from rich.console import Console
@@ -33,15 +33,17 @@ def _format_docs(docs: list) -> str:
 
 
 def _build_chain(collection: str):
-    embeddings = OllamaEmbeddings(model=config.EMBED_MODEL)
+    collection_dir = config.INDEX_DIR / collection
+    if not collection_dir.exists():
+        raise FileNotFoundError(
+            f"No index found for collection '{collection}'. Run 'index' first."
+        )
 
-    vectorstore = Chroma(
-        persist_directory=str(config.CHROMA_DIR),
-        embedding_function=embeddings,
-        collection_name=collection,
+    embeddings = OllamaEmbeddings(model=config.EMBED_MODEL)
+    vectorstore = FAISS.load_local(
+        str(collection_dir), embeddings, allow_dangerous_deserialization=True
     )
 
-    # MMR: balances relevance + diversity across retrieved chunks
     retriever = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={"k": config.TOP_K, "fetch_k": config.TOP_K * 3},
@@ -59,14 +61,12 @@ def _build_chain(collection: str):
 
 
 def query(question: str, collection: str | None = None, show_sources: bool = False) -> str:
-    """Run a RAG query and stream the answer to stdout."""
     collection = collection or config.COLLECTION
 
     try:
         chain, retriever = _build_chain(collection)
-    except Exception as e:
-        console.print(f"[red]Failed to load index: {e}[/red]")
-        console.print("[dim]Have you run 'index' first?[/dim]")
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
         return ""
 
     console.print(f"\n[bold blue]Q:[/bold blue] {question}\n")
@@ -81,7 +81,7 @@ def query(question: str, collection: str | None = None, show_sources: bool = Fal
         console.print(f"\n[red]Error during generation: {e}[/red]")
         return full_response
 
-    print()  # final newline after streamed output
+    print()
 
     if show_sources:
         docs = retriever.invoke(question)

@@ -5,8 +5,8 @@ from pathlib import Path
 EMBED_MODEL: str = os.getenv("RAG_EMBED_MODEL", "nomic-embed-text")
 LLM_MODEL: str = os.getenv("RAG_LLM_MODEL", "llama3.2")
 
-# ChromaDB persistence
-CHROMA_DIR: Path = Path(os.getenv("RAG_CHROMA_DIR", "./chroma_db"))
+# FAISS persistence — each collection is a subdirectory
+INDEX_DIR: Path = Path(os.getenv("RAG_INDEX_DIR", "./faiss_db"))
 COLLECTION: str = os.getenv("RAG_COLLECTION", "default")
 
 # Chunking

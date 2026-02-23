@@ -1,8 +1,8 @@
-venv
-nchroma_db
-faiss_db
-__pycache__
+venv/
+faiss_db/
+output/
+__pycache__/
 *.pyc
 .env
-docs
-.claude
+docs/
+.claude/

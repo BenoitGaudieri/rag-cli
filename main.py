@@ -185,24 +185,36 @@ def clear(
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+def _resolve_output(path: Path) -> Path:
+    """If path has no parent directory (bare filename), place it inside OUTPUT_DIR."""
+    from rag import config
+    if path.parent == Path("."):
+        out = config.OUTPUT_DIR / path
+    else:
+        out = path
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return out
+
+
 def _save_output(path: Path, question: str, answer: str) -> None:
     """Write a single Q/A pair to disk in the format implied by the file extension."""
-    suffix = path.suffix.lower()
+    from rag import config
+    dest = _resolve_output(path)
+    suffix = dest.suffix.lower()
     if suffix == ".json":
         import json
-        from rag import config
         data = {
             "question": question,
             "answer": answer,
             "collection": config.COLLECTION,
             "model": config.LLM_MODEL,
         }
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        dest.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     elif suffix == ".md":
-        path.write_text(f"## Q\n\n{question}\n\n## A\n\n{answer}\n", encoding="utf-8")
+        dest.write_text(f"## Q\n\n{question}\n\n## A\n\n{answer}\n", encoding="utf-8")
     else:
-        path.write_text(f"Q: {question}\n\nA: {answer}\n", encoding="utf-8")
-    console.print(f"\n[dim]Saved → {path}[/dim]")
+        dest.write_text(f"Q: {question}\n\nA: {answer}\n", encoding="utf-8")
+    console.print(f"\n[dim]Saved → {dest}[/dim]")
 
 
 # ── compare ───────────────────────────────────────────────────────────────────
@@ -265,17 +277,18 @@ def compare(
     if not output:
         return
 
-    suffix = output.suffix.lower()
+    dest = _resolve_output(output)
+    suffix = dest.suffix.lower()
     if suffix == ".json":
-        output.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+        dest.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     else:
         # Default: CSV
-        with output.open("w", newline="", encoding="utf-8") as f:
+        with dest.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=["question", "model", "answer", "latency_s"])
             writer.writeheader()
             writer.writerows(results)
 
-    console.print(f"\n[bold green]✓ Results saved to {output}[/bold green]")
+    console.print(f"\n[bold green]✓ Results saved to {dest}[/bold green]")
 
 
 # ── entrypoint ────────────────────────────────────────────────────────────────

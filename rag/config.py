@@ -18,3 +18,7 @@ CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
 
 # Retrieval
 TOP_K: int = int(os.getenv("RAG_TOP_K", "5"))
+
+# TTS
+TTS_VOICE: str = os.getenv("RAG_TTS_VOICE", "it-IT-ElsaNeural")
+TTS_MAX_CHARS: int = int(os.getenv("RAG_TTS_MAX_CHARS", "0"))  # 0 = no limit

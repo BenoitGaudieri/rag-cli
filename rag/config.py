@@ -9,6 +9,9 @@ LLM_MODEL: str = os.getenv("RAG_LLM_MODEL", "llama3.2")
 INDEX_DIR: Path = Path(os.getenv("RAG_INDEX_DIR", "./faiss_db"))
 COLLECTION: str = os.getenv("RAG_COLLECTION", "default")
 
+# Output directory for saved answers and compare results
+OUTPUT_DIR: Path = Path(os.getenv("RAG_OUTPUT_DIR", "./output"))
+
 # Chunking
 CHUNK_SIZE: int = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))

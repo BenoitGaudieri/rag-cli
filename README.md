@@ -116,6 +116,10 @@ python main.py query "Summarise the key findings"
 # Show the source chunks used to generate the answer
 python main.py query "What are the installation steps?" --sources
 
+# Save the answer to the output/ folder (format inferred from extension)
+python main.py query "Summarise the CV" --output summary.md
+python main.py query "List key skills" --output skills.json
+
 # Interactive REPL — ask multiple questions in a session
 python main.py query
 
@@ -125,6 +129,23 @@ python main.py query "Translate chapter 1 to Italian" --model mistral
 # Query a named collection
 python main.py query "..." --collection myproject
 ```
+
+### Compare models
+
+Run the same question(s) against multiple models and collect results in a CSV or JSON file.
+
+```bash
+# Single question, two models
+python main.py compare "What are your main skills?" --models "llama3.2,mistral" --output comparison.csv
+
+# Multiple questions from a file (one per line)
+python main.py compare questions.txt --models "llama3.2,mistral,phi3" --output comparison.csv
+
+# Save as JSON instead
+python main.py compare "Summarise the document" --models "llama3.2,mistral" --output comparison.json
+```
+
+The output CSV has four columns: `question`, `model`, `answer`, `latency_s`.
 
 ### Manage collections
 
@@ -145,7 +166,8 @@ All defaults can be overridden via environment variables (or a `.env` file):
 | `RAG_LLM_MODEL` | `llama3.2` | Ollama model for generation |
 | `RAG_EMBED_MODEL` | `nomic-embed-text` | Ollama model for embeddings |
 | `RAG_COLLECTION` | `default` | FAISS collection name |
-| `RAG_INDEX_DIR` | `./faiss_db` | Persistence directory |
+| `RAG_INDEX_DIR` | `./faiss_db` | Vector index directory |
+| `RAG_OUTPUT_DIR` | `./output` | Directory for saved answers and compare results |
 | `RAG_CHUNK_SIZE` | `1000` | Characters per text chunk |
 | `RAG_CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
 | `RAG_TOP_K` | `5` | Number of chunks retrieved per query |
@@ -168,7 +190,8 @@ rag-cli/
 │   ├── indexer.py   # document loading, chunking, embedding → FAISS
 │   └── chain.py     # LCEL RAG chain, MMR retriever, streaming output
 ├── requirements.txt
-└── faiss_db/        # auto-created on first index (add to .gitignore)
+├── faiss_db/        # auto-created on first index  ← gitignored
+└── output/          # saved answers and compare CSVs ← gitignored
 ```
 
 ---

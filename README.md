@@ -28,6 +28,7 @@ A: According to the documentation, the three main configuration options are...
 | RAG Framework | [LangChain](https://python.langchain.com/) 1.x (LCEL) |
 | Vector Store | [FAISS](https://github.com/facebookresearch/faiss) — persistent, local, no server needed |
 | Document Parsing | `pypdf`, `docx2txt`, built-in text loaders |
+| TTS | [edge-tts](https://github.com/rany2/edge-tts) — Microsoft Neural voices (multilingual) |
 | CLI | [Typer](https://typer.tiangolo.com/) + [Rich](https://rich.readthedocs.io/) |
 
 ---
@@ -130,6 +131,47 @@ python main.py query "Translate chapter 1 to Italian" --model mistral
 python main.py query "..." --collection myproject
 ```
 
+### Text-to-speech
+
+Read text, documents, or query answers aloud using Microsoft Neural voices via `edge-tts`. Requires an internet connection for synthesis; audio playback is handled natively (no extra dependencies on Windows).
+
+```bash
+# Read a string directly
+python main.py speak "Ciao, questo è un test"
+
+# Read a PDF file
+python main.py speak ./docs/report.pdf
+
+# Read a saved answer (.json, .txt, .md)
+python main.py speak output/summary.json
+
+# Truncate long documents to the first 3 000 characters
+python main.py speak ./docs/report.pdf --max-chars 3000
+
+# Save the synthesised audio to an MP3 instead of playing it
+python main.py speak ./docs/report.pdf --save audio/report.mp3
+
+# Use a different voice
+python main.py speak "hello" --voice en-US-AriaNeural
+```
+
+Add `--speak` / `-S` to any `query` call to have the answer read aloud automatically:
+
+```bash
+# Single question
+python main.py query "Riassumi il documento" --speak
+
+# Interactive REPL — every answer is read aloud
+python main.py query --speak
+
+# Different voice
+python main.py query "..." --speak --voice it-IT-IsabellaNeural
+```
+
+Available Italian voices: `it-IT-ElsaNeural` (default, female), `it-IT-IsabellaNeural` (female), `it-IT-DiegoNeural` (male).
+
+---
+
 ### Compare models
 
 Run the same question(s) against multiple models and collect results in a CSV or JSON file.
@@ -171,6 +213,8 @@ All defaults can be overridden via environment variables (or a `.env` file):
 | `RAG_CHUNK_SIZE` | `1000` | Characters per text chunk |
 | `RAG_CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
 | `RAG_TOP_K` | `5` | Number of chunks retrieved per query |
+| `RAG_TTS_VOICE` | `it-IT-ElsaNeural` | Default TTS voice |
+| `RAG_TTS_MAX_CHARS` | `0` | Max characters to synthesise (0 = no limit) |
 
 Example:
 
@@ -184,11 +228,12 @@ RAG_LLM_MODEL=mistral RAG_TOP_K=8 python main.py query "..."
 
 ```
 rag-cli/
-├── main.py          # CLI entry point — index / query / list / clear
+├── main.py          # CLI entry point — index / query / speak / list / clear / compare
 ├── rag/
 │   ├── config.py    # all parameters, overridable via env vars
 │   ├── indexer.py   # document loading, chunking, embedding → FAISS
-│   └── chain.py     # LCEL RAG chain, MMR retriever, streaming output
+│   ├── chain.py     # LCEL RAG chain, MMR retriever, streaming output
+│   └── tts.py       # TTS synthesis (edge-tts) + text extraction from PDF/JSON/MD
 ├── requirements.txt
 ├── faiss_db/        # auto-created on first index  ← gitignored
 └── output/          # saved answers and compare CSVs ← gitignored

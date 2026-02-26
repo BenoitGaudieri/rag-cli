@@ -62,6 +62,12 @@ def query(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Save answer to file (.txt, .json, .md)"
     ),
+    speak: bool = typer.Option(
+        False, "--speak", "-S", help="Read the answer aloud using TTS"
+    ),
+    tts_voice: Optional[str] = typer.Option(
+        None, "--voice", "-V", help="TTS voice name (e.g. it-IT-ElsaNeural)"
+    ),
 ):
     """Ask a question about indexed documents."""
     from rag import config
@@ -74,6 +80,8 @@ def query(
         answer = do_query(question, collection, show_sources=sources)
         if output and answer:
             _save_output(output, question, answer)
+        if speak and answer:
+            _speak_text(answer, voice=tts_voice)
         return
 
     # ── interactive REPL ──────────────────────────────────────────────────────
@@ -99,7 +107,9 @@ def query(
             continue
         if q.lower() in ("exit", "quit", "q", ":q"):
             break
-        do_query(q, collection, show_sources=sources)
+        ans = do_query(q, collection, show_sources=sources)
+        if speak and ans:
+            _speak_text(ans, voice=tts_voice)
 
     console.print("\n[dim]Bye.[/dim]")
 
@@ -196,6 +206,20 @@ def _resolve_output(path: Path) -> Path:
     return out
 
 
+def _speak_text(text: str, voice: Optional[str] = None) -> None:
+    """Speak *text* using TTS, handling errors gracefully."""
+    from rag import config
+    from rag.tts import speak as do_speak
+
+    try:
+        with console.status("[dim]Synthesizing audio…[/dim]"):
+            do_speak(text, voice=voice, max_chars=config.TTS_MAX_CHARS)
+    except RuntimeError as e:
+        console.print(f"[yellow]TTS unavailable: {e}[/yellow]")
+    except KeyboardInterrupt:
+        console.print("\n[dim]TTS stopped.[/dim]")
+
+
 def _save_output(path: Path, question: str, answer: str) -> None:
     """Write a single Q/A pair to disk in the format implied by the file extension."""
     from rag import config
@@ -215,6 +239,61 @@ def _save_output(path: Path, question: str, answer: str) -> None:
     else:
         dest.write_text(f"Q: {question}\n\nA: {answer}\n", encoding="utf-8")
     console.print(f"\n[dim]Saved → {dest}[/dim]")
+
+
+# ── speak ─────────────────────────────────────────────────────────────────────
+
+@app.command()
+def speak(
+    source: str = typer.Argument(
+        ..., help="Text to read aloud, or path to a file (.txt, .md, .pdf, .json)"
+    ),
+    voice: Optional[str] = typer.Option(
+        None, "--voice", "-v", help="TTS voice name (default from config/RAG_TTS_VOICE)"
+    ),
+    save: Optional[Path] = typer.Option(
+        None, "--save", help="Save audio to an MP3 file instead of playing"
+    ),
+    max_chars: int = typer.Option(
+        0, "--max-chars", help="Truncate text to N characters (0 = no limit)"
+    ),
+):
+    """Read text or a document aloud using TTS (edge-tts neural voices)."""
+    from rag import config
+    from rag.tts import speak as do_speak, extract_text
+
+    src = Path(source)
+    if src.exists() and src.is_file():
+        try:
+            text = extract_text(src)
+        except Exception as e:
+            console.print(f"[red]Could not read file: {e}[/red]")
+            raise typer.Exit(1)
+        console.print(f"[dim]Reading {src.name} ({len(text):,} chars)…[/dim]")
+    else:
+        text = source
+
+    if not text.strip():
+        console.print("[yellow]Nothing to read.[/yellow]")
+        return
+
+    limit = max_chars or config.TTS_MAX_CHARS
+    if limit and len(text) > limit:
+        console.print(f"[dim]Truncating to {limit:,} chars.[/dim]")
+
+    dest = _resolve_output(save) if save else None
+    if dest:
+        console.print(f"[dim]Saving audio to {dest}…[/dim]")
+
+    try:
+        do_speak(text, voice=voice, save_to=dest, max_chars=limit)
+        if dest:
+            console.print(f"[green]Saved → {dest}[/green]")
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped.[/dim]")
 
 
 # ── compare ───────────────────────────────────────────────────────────────────
